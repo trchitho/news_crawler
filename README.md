@@ -228,16 +228,6 @@ python manage.py crawl_recent --hours 2
 
 ---
 
-### 5.9. Troubleshooting nhanh
-
-- **Migrate không tạo bảng mới** → chạy `makemigrations` cho app tương ứng rồi `migrate`
-- **Thiếu gói khi crawl** → `pip install <tên_gói>` rồi chạy lại
-- **Không thấy bài trên trang chủ** → đã `seed_sources` & `crawl_now --limit 30` chưa?
-- **CSRF khi comment/reaction** → đảm bảo có <code>{% csrf_token %}</code> trong form/templates
-- **Mất CSS/JS (DEV)** → không cần `collectstatic`; kiểm tra đường dẫn `templates/static`
-
----
-
 ## 6. Luồng Hoạt Động
 
 1. **Seed Sources** → DB lưu danh sách RSS
