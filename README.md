@@ -13,13 +13,13 @@ Hệ thống có thể:
 
 ## 2. Kiến trúc & Công nghệ
 
-- **Django**: ORM, template engine, admin, management commands.
-- **Database**: PostgreSQL (production) / SQLite (dev).
-- **Celery + Redis**: xử lý tác vụ nền (crawl RSS, fetch HTML, làm sạch dữ liệu).
-- **Requests + Feedparser + Trafilatura**: tải RSS, parse HTML, trích xuất nội dung.
-- **BeautifulSoup + Bleach**: sanitize & định dạng HTML.
-- **Whitenoise + Gunicorn**: phục vụ static file & production server.
-- **Django Template Engine**: giao diện thuần HTML/CSS (có thể kết hợp HTMX).
+- **Django**: ORM, template engine, admin, management commands
+- **Database**: PostgreSQL (production) / SQLite (dev)
+- **Celery + Redis**: xử lý tác vụ nền (crawl RSS, fetch HTML, làm sạch dữ liệu)
+- **Requests + Feedparser + Trafilatura**: tải RSS, parse/trích xuất nội dung HTML
+- **BeautifulSoup + Bleach**: sanitize & định dạng HTML
+- **Whitenoise + Gunicorn**: phục vụ static file & production server
+- **Django Template Engine**: giao diện thuần HTML/CSS (có thể kết hợp HTMX)
 
 ---
 
@@ -88,185 +88,169 @@ vnnews/                       # Project config
 ### Comment, Reaction
 
 - Gắn với `Article`
-- `Reaction.value`: like, love, wow, sad, angry
+- `Reaction.value`: `like`, `love`, `wow`, `sad`, `angry`
 
 ---
 
-5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
+## 5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
 
-Mục tiêu: chạy bằng SQLite + crawl đồng bộ (sync), không cần Redis/Celery.
+> Mục tiêu: chạy bằng **SQLite** + **crawl đồng bộ (sync)**, **không cần Redis/Celery**.
+> Làm theo thứ tự từng bước dưới đây.
 
-5.1. Yêu cầu hệ thống
+### 5.1. Yêu cầu hệ thống
 
-Python 3.10+, Git, pip
+- **Python 3.10+**, **Git**, **pip**
+- Khuyến nghị dùng **venv** để cô lập môi trường
+- **KHÔNG cần** PostgreSQL/Redis cho DEV
 
-Khuyến nghị dùng venv để cô lập môi trường
+---
 
-KHÔNG cần PostgreSQL/Redis cho DEV
+### 5.2. Clone repo & tạo môi trường ảo
 
-5.2. Clone repo & tạo môi trường ảo
-
+```bash
 # Clone
-
 git clone https://github.com/trchitho/news_crawler.git
 cd news_crawler
 
 # Tạo venv
-
 # Linux/macOS:
-
 python3 -m venv .venv && source .venv/bin/activate
 
 # Windows PowerShell:
-
-python -m venv .venv
-.\.
-
-Bạn đã nói:
-viết lại hoàn chỉnh chứ
-
-ChatGPT đã nói:
-Đã suy nghĩ trong 1 giây
-Đã suy nghĩ trong 9s
-
-Chuẩn—mình viết lại mục 5 (DEV) thật đầy đủ, “copy-paste là chạy”, kèm luôn lệnh Git để cập nhật khi có thay đổi (migrations, requirements). Bạn chỉ cần thay thế mục 5 trong README bằng nội dung dưới đây.
-
-5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
-
-Mục tiêu: chạy bằng SQLite + crawl đồng bộ (sync), không cần Redis/Celery.
-Tất cả lệnh đều theo thứ tự; làm xong bước trước mới tới bước sau.
-
-5.1. Yêu cầu hệ thống
-
-Python 3.10+, Git, pip
-
-Khuyến nghị dùng venv để cô lập môi trường
-
-KHÔNG cần PostgreSQL/Redis cho DEV
-
-5.2. Clone repo & tạo môi trường ảo
-
-# Clone
-
-git clone https://github.com/trchitho/news_crawler.git
-cd news_crawler
-
-# Tạo venv
-
-# Linux/macOS:
-
-python3 -m venv .venv && source .venv/bin/activate
-
-# Windows PowerShell:
-
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+```
 
-⚠️ Nếu PowerShell chặn script: mở PowerShell Run as Administrator và chạy
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ⚠️ Nếu PowerShell chặn script: mở PowerShell **Run as Administrator** và chạy
+> `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
-5.3. Cài thư viện Python
+---
 
-# Nâng pip + công cụ build (nhất là trên Windows)
+### 5.3. Cài thư viện Python
 
+```bash
+# Nâng pip + công cụ build (đặc biệt trên Windows)
 python -m pip install --upgrade pip setuptools wheel
 
-# Cài đúng dependencies của dự án
-
+# Cài dependencies của dự án
 pip install -r requirements.txt
+```
 
-Nếu sau này lệnh crawl báo thiếu gói (ví dụ feedparser), cài bổ sung:
-pip install feedparser requests bleach beautifulsoup4 trafilatura readability-lxml django-taggit
+> Nếu chạy crawl bị báo thiếu gói (ví dụ `feedparser`), cài bổ sung:
+> `pip install feedparser requests bleach beautifulsoup4 trafilatura readability-lxml django-taggit`
 
-5.4. Tạo file cấu hình môi trường .env
+---
 
-Tạo file .env tại thư mục gốc (có thể copy từ .env.example nếu có):
+### 5.4. Tạo file cấu hình môi trường `.env`
 
+Tạo file `.env` ở thư mục gốc (có thể copy từ `.env.example` nếu sẵn):
+
+```env
 # Django
-
 DEBUG=True
 SECRET_KEY=change-me
 ALLOWED_HOSTS=127.0.0.1,localhost
 TIME_ZONE=Asia/Ho_Chi_Minh
 
 # Database (DEV dùng SQLite)
-
 DATABASE_URL=sqlite:///db.sqlite3
 
 # Redis (KHÔNG cần cho DEV sync)
-
 REDIS_URL=redis://localhost:6379/0
+```
 
-Đảm bảo vnnews/settings.py đọc .env (vd: dùng django-environ).
-Nếu chưa, thêm khởi tạo environ vào settings.py (load .env), rồi chạy lại.
+> Đảm bảo `vnnews/settings.py` **có đọc `.env`** (vd: dùng `django-environ`).
+> Nếu chưa: thêm đoạn khởi tạo environ để load `.env`.
 
-5.5. Khởi tạo CSDL & seed nguồn
+---
 
+### 5.5. Khởi tạo CSDL & seed nguồn
+
+```bash
 # Tạo schema DB
-
 python manage.py migrate
 
 # (Tuỳ chọn) tạo tài khoản admin để vào /admin
-
 python manage.py createsuperuser
 
-# Nạp danh sách nguồn RSS (idempotent – chạy nhiều lần cũng không sao)
-
+# Nạp danh sách nguồn RSS (idempotent)
 python manage.py seed_sources
+```
 
-Nếu Django báo: “models trong app X đã thay đổi nhưng chưa có migration”
-thì tạo migration trước:
-python manage.py makemigrations web (UPDATE CHỖ NÀY!)
-(sửa nhiều app thì gom luôn: python manage.py makemigrations web articles sources)
-rồi chạy lại python manage.py migrate.
+> Nếu Django báo: **models thay đổi nhưng chưa có migration**, hãy chạy:
+>
+> ```bash
+> python manage.py makemigrations web
+> # nếu sửa nhiều app:
+> python manage.py makemigrations web articles sources
+> python manage.py migrate
+> ```
 
-5.6. Crawl dữ liệu mẫu (đồng bộ – không cần Celery)
+---
 
-# Lấy ~30 bài mới từ các nguồn RSS (chạy SYNC)
+### 5.6. Crawl dữ liệu mẫu (đồng bộ – không Celery)
 
+```bash
+# Lấy ~30 bài mới từ các nguồn RSS (SYNC)
 python manage.py crawl_now --limit 30
+```
 
-Lệnh này KHÔNG dùng Celery, giúp có dữ liệu ngay để test UI.
+> Lệnh này **KHÔNG dùng Celery**, giúp có dữ liệu ngay để test UI.
 
-5.7. Chạy web server (DEV)
+---
+
+### 5.7. Chạy web server (DEV)
+
+```bash
 python manage.py runserver
+```
 
-App: http://127.0.0.1:8000
+- App: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- Admin: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
 
-Admin: http://127.0.0.1:8000/admin
+---
 
-5.8. Lệnh hữu ích trong DEV
+### 5.8. Lệnh hữu ích trong DEV
 
+```bash
 # Kiểm tra cấu hình Django
-
 python manage.py check
 
-# Rebuild trường search_blob (tìm kiếm bỏ dấu)
-
+# Rebuild search_blob (tìm kiếm bỏ dấu)
 python manage.py reindex_search
 
 # Crawl một URL cụ thể (debug)
-
 python manage.py crawl_once "https://.../bai-bao.html"
 
-Chỉ khi dùng Celery (không áp dụng cho DEV sync):
+# (Chỉ khi dùng Celery – không áp dụng cho DEV sync)
 python manage.py crawl_recent --hours 2
+```
+
+---
+
+### 5.9. Troubleshooting nhanh
+
+- **Migrate không tạo bảng mới** → chạy `makemigrations` cho app tương ứng rồi `migrate`
+- **Thiếu gói khi crawl** → `pip install <tên_gói>` rồi chạy lại
+- **Không thấy bài trên trang chủ** → đã `seed_sources` & `crawl_now --limit 30` chưa?
+- **CSRF khi comment/reaction** → đảm bảo có `{% csrf_token %}` trong form/templates
+- **Mất CSS/JS (DEV)** → không cần `collectstatic`; kiểm tra đường dẫn `templates/static`
 
 ---
 
 ## 6. Luồng Hoạt Động
 
-1. **Seed Sources** → DB lưu danh sách RSS.
-2. **(DEV sync)**: `crawl_now` gọi trực tiếp hàm fetch & lưu Article, **không cần Celery**.
-3. **(Prod)**: Celery Beat mỗi 2h gọi `schedule_all_sources` → queue `task_fetch_feed(source_id)` → queue `task_fetch_article(url)`.
-4. `task_fetch_article` → tải HTML, sanitize, trích xuất title, excerpt, image, content → lưu `Article`.
-5. **Web App** → HomeView (bài mới), CategoryView (lọc danh mục), ArticleDetailView (chi tiết + comment + reaction).
+1. **Seed Sources** → DB lưu danh sách RSS
+2. **(DEV sync)**: `crawl_now` gọi trực tiếp hàm fetch & lưu `Article` (**không cần Celery**)
+3. **(Prod)**: Celery Beat (2h/lần) → `schedule_all_sources` → `task_fetch_feed(source_id)` → `task_fetch_article(url)`
+4. `task_fetch_article` → tải HTML, sanitize, trích xuất title/excerpt/image/content → lưu `Article`
+5. **Web App** → `HomeView` (bài mới), `CategoryView` (lọc), `ArticleDetailView` (chi tiết + comment + reaction)
 
 ---
 
 ## 7. Giao diện
 
-- **base.html**: header, nav categories, search box.
-- **home.html**: lưới card (ảnh, tiêu đề, excerpt, meta).
-- **category.html**: danh sách bài trong một danh mục.
-- **article_detail.html**: nội dung bài sạch (HTML safe), ảnh, caption, reactions, comment box, related articles.
+- **base.html**: header, nav categories, search box
+- **home.html**: lưới card (ảnh, tiêu đề, excerpt, meta)
+- **category.html**: danh sách bài theo danh mục
+- **article_detail.html**: nội dung sạch (HTML safe), ảnh, caption, reactions, comment box, related articles
