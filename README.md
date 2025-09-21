@@ -92,139 +92,165 @@ vnnews/                       # Project config
 
 ---
 
-## 5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
+5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
 
-> Mục tiêu: **ai clone repo cũng chạy được ngay** bằng SQLite, crawl đồng bộ (sync), không cần cài Redis hay bật Celery.
+Mục tiêu: chạy bằng SQLite + crawl đồng bộ (sync), không cần Redis/Celery.
 
-### 5.1. Yêu cầu hệ thống
+5.1. Yêu cầu hệ thống
 
-- **Python 3.10+**
-- **Git**
-- **pip** (hoặc pipx)
-- (Tùy chọn) **virtualenv**/**venv** để cô lập môi trường
+Python 3.10+, Git, pip
 
-> Không cần PostgreSQL/Redis trong DEV (dùng SQLite + crawl sync).
+Khuyến nghị dùng venv để cô lập môi trường
 
----
+KHÔNG cần PostgreSQL/Redis cho DEV
 
-### 5.2. Clone repo & tạo môi trường ảo
+5.2. Clone repo & tạo môi trường ảo
 
-```bash
 # Clone
+
 git clone https://github.com/trchitho/news_crawler.git
 cd news_crawler
 
 # Tạo venv
+
 # Linux/macOS:
+
 python3 -m venv .venv && source .venv/bin/activate
 
 # Windows PowerShell:
+
+python -m venv .venv
+.\.
+
+Bạn đã nói:
+viết lại hoàn chỉnh chứ
+
+ChatGPT đã nói:
+Đã suy nghĩ trong 1 giây
+Đã suy nghĩ trong 9s
+
+Chuẩn—mình viết lại mục 5 (DEV) thật đầy đủ, “copy-paste là chạy”, kèm luôn lệnh Git để cập nhật khi có thay đổi (migrations, requirements). Bạn chỉ cần thay thế mục 5 trong README bằng nội dung dưới đây.
+
+5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
+
+Mục tiêu: chạy bằng SQLite + crawl đồng bộ (sync), không cần Redis/Celery.
+Tất cả lệnh đều theo thứ tự; làm xong bước trước mới tới bước sau.
+
+5.1. Yêu cầu hệ thống
+
+Python 3.10+, Git, pip
+
+Khuyến nghị dùng venv để cô lập môi trường
+
+KHÔNG cần PostgreSQL/Redis cho DEV
+
+5.2. Clone repo & tạo môi trường ảo
+
+# Clone
+
+git clone https://github.com/trchitho/news_crawler.git
+cd news_crawler
+
+# Tạo venv
+
+# Linux/macOS:
+
+python3 -m venv .venv && source .venv/bin/activate
+
+# Windows PowerShell:
+
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
 
-> ⚠️ Nếu PowerShell chặn script:
-> Mở PowerShell **Administrator** và chạy:
-> `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+⚠️ Nếu PowerShell chặn script: mở PowerShell Run as Administrator và chạy
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
----
+5.3. Cài thư viện Python
 
-### 5.3. Cài thư viện Python
+# Nâng pip + công cụ build (nhất là trên Windows)
 
-```bash
-pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
+
+# Cài đúng dependencies của dự án
+
 pip install -r requirements.txt
-```
 
-> Nếu trong `requirements.txt` chưa có `django-environ` (hoặc bạn dùng biến môi trường), cài bổ sung:
-> `pip install django-environ`
+Nếu sau này lệnh crawl báo thiếu gói (ví dụ feedparser), cài bổ sung:
+pip install feedparser requests bleach beautifulsoup4 trafilatura readability-lxml django-taggit
 
----
+5.4. Tạo file cấu hình môi trường .env
 
-### 5.4. Tạo file cấu hình môi trường `.env`
+Tạo file .env tại thư mục gốc (có thể copy từ .env.example nếu có):
 
-Tạo file `.env` ở thư mục gốc (có thể copy từ `.env.example` nếu sẵn):
-
-```env
 # Django
+
 DEBUG=True
 SECRET_KEY=change-me
 ALLOWED_HOSTS=127.0.0.1,localhost
 TIME_ZONE=Asia/Ho_Chi_Minh
 
 # Database (DEV dùng SQLite)
+
 DATABASE_URL=sqlite:///db.sqlite3
 
-# Redis (KHÔNG cần cho DEV sync; để trống cũng được)
+# Redis (KHÔNG cần cho DEV sync)
+
 REDIS_URL=redis://localhost:6379/0
-```
 
-> Đảm bảo `vnnews/settings.py` đã đọc `.env` (vd: `django-environ`).
-> Nếu chưa: thêm đoạn khởi tạo environ (load `.env`) trong `settings.py`.
+Đảm bảo vnnews/settings.py đọc .env (vd: dùng django-environ).
+Nếu chưa, thêm khởi tạo environ vào settings.py (load .env), rồi chạy lại.
 
----
+5.5. Khởi tạo CSDL & seed nguồn
 
-### 5.5. Khởi tạo CSDL & seed dữ liệu nguồn
-
-```bash
 # Tạo schema DB
+
 python manage.py migrate
 
 # (Tuỳ chọn) tạo tài khoản admin để vào /admin
+
 python manage.py createsuperuser
 
-# Nạp danh sách nguồn RSS
+# Nạp danh sách nguồn RSS (idempotent – chạy nhiều lần cũng không sao)
+
 python manage.py seed_sources
-```
 
----
+Nếu Django báo: “models trong app X đã thay đổi nhưng chưa có migration”
+thì tạo migration trước:
+python manage.py makemigrations web (UPDATE CHỖ NÀY!)
+(sửa nhiều app thì gom luôn: python manage.py makemigrations web articles sources)
+rồi chạy lại python manage.py migrate.
 
-### 5.6. Crawl mẫu (đồng bộ – không cần worker)
+5.6. Crawl dữ liệu mẫu (đồng bộ – không cần Celery)
 
-```bash
 # Lấy ~30 bài mới từ các nguồn RSS (chạy SYNC)
+
 python manage.py crawl_now --limit 30
-```
 
-> Lệnh này **không dùng Celery**, giúp bạn có dữ liệu ngay để test UI.
+Lệnh này KHÔNG dùng Celery, giúp có dữ liệu ngay để test UI.
 
----
-
-### 5.7. Chạy web server (DEV)
-
-```bash
+5.7. Chạy web server (DEV)
 python manage.py runserver
-```
 
-- App: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-- Admin: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
+App: http://127.0.0.1:8000
 
----
+Admin: http://127.0.0.1:8000/admin
 
-### 5.8. Lệnh hữu ích trong DEV
+5.8. Lệnh hữu ích trong DEV
 
-```bash
 # Kiểm tra cấu hình Django
+
 python manage.py check
 
-# Rebuild search_blob (tìm kiếm bỏ dấu)
+# Rebuild trường search_blob (tìm kiếm bỏ dấu)
+
 python manage.py reindex_search
 
-# Ép crawl các bài mới trong N giờ gần đây (chỉ cần khi bạn dùng Celery; DEV sync không bắt buộc)
-python manage.py crawl_recent --hours 2
+# Crawl một URL cụ thể (debug)
 
-# Crawl một bài cụ thể theo URL
 python manage.py crawl_once "https://.../bai-bao.html"
-```
 
----
-
-### 5.9. Troubleshooting nhanh (DEV)
-
-- **Không thấy bài trên trang chủ** → Hãy chạy `seed_sources` rồi `crawl_now --limit 30`.
-- **Lỗi SECRET_KEY/ALLOWED_HOSTS** → Kiểm tra `.env` và `settings.py` đã đọc `.env` chưa.
-- **CSRF khi comment/reaction** → Kiểm tra `{% csrf_token %}` trong form/templates.
-- **Mất static/css** → Chạy ở DEV không cần `collectstatic`; kiểm tra đường dẫn template.
+Chỉ khi dùng Celery (không áp dụng cho DEV sync):
+python manage.py crawl_recent --hours 2
 
 ---
 
