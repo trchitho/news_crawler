@@ -6,8 +6,11 @@
   <title>{% block title %}VN News{% endblock %}</title>
   <style>
     :root{
-      --bg:#0e1116; --card:#161a22; --muted:#8a94a7; --text:#e6ebf5; --brand:#3ea6ff;
-      --ring:#263247; --border:#1f2530; --accent:#1b2432;
+      --bg:#0e1116; --card:#161a22; --muted:#8a94a7; --text:#e6ebf5;
+      --ring:#263247; --border:#1f2530;
+      --btn-bg:#1b2432; --btn-fg:#e6ebf5; --btn-br:#2a3243;
+      --btn-bg-primary:#3b82f6; --btn-fg-primary:#fff; --btn-br-primary:#3b82f6;
+      --chip-bg:#1b2432;
     }
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
@@ -15,58 +18,95 @@
     a{color:var(--text);text-decoration:none}
     a:hover{color:#fff}
     .container{max-width:1100px;margin:0 auto;padding:24px}
-    .header{display:flex;gap:18px;align-items:center;justify-content:space-between;margin-bottom:18px}
+
+    /* ===== Header: 3 cột cố định ===== */
+    .header{
+      display:grid;
+      grid-template-columns:160px 1fr auto;
+      gap:14px;
+      align-items:center;
+      margin-bottom:16px;
+    }
     .brand{font-weight:800;font-size:22px;color:#7cc0ff}
-    .search{flex:1;display:flex;justify-content:center}
-    .search form{width:100%;max-width:680px;display:flex;gap:8px}
-    .search input,
-    .search select{
+
+    .search{min-width:0}
+    .search form{display:flex;gap:8px;align-items:center;width:100%}
+    .input,.select{
       padding:12px 14px;border-radius:12px;border:1px solid var(--ring);
       background:var(--card);color:var(--text);outline:0;font-size:15px
     }
-    .search input{flex:1}
-    .search select{min-width:130px}
-    .nav{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-    .chip{
-      display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid var(--border);
-      background:var(--accent);color:var(--text);font-size:13px
+    .input{flex:1;min-width:0}
+    .select{max-width:170px;appearance:none}
+
+    /* ===== Actions (hàng ngang) + Stack (cột dọc) ===== */
+    .actions{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;   /* để cụm stack đứng vững khi cao hơn các nút khác */
+      flex-wrap:wrap;           /* khi hẹp thì tự xuống dòng */
+      justify-content:flex-end;
     }
-    .muted{color:var(--muted)}
-    .grid{display:grid;gap:16px}
-    .grid.cards{grid-template-columns:repeat(1,minmax(0,1fr))}
-    @media(min-width:640px){.grid.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(min-width:960px){.grid.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
-    .card .cover{display:block;background:#0b0f15}
-    .card .cover img{width:100%;height:200px;object-fit:cover;display:block}
-    .card .body{padding:14px}
-    .title{font-weight:700;font-size:18px;line-height:1.35;margin:4px 0 6px}
-    .excerpt{font-size:14px;color:var(--muted)}
-    .meta{font-size:12px;color:var(--muted)}
+    .actions .stack{
+      display:flex;
+      flex-direction:column;    /* Đăng bài ở trên, Admin ở dưới */
+      gap:8px;
+    }
+
+    /* Buttons */
     .btn{
-      display:inline-flex;gap:8px;align-items:center;
-      padding:10px 12px;border-radius:10px;border:1px solid var(--border);
-      background:var(--accent);color:var(--text);cursor:pointer
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      height:40px;padding:0 16px;border-radius:12px;border:1px solid var(--btn-br);
+      background:var(--btn-bg);color:var(--btn-fg);font-weight:700;white-space:nowrap;
+      cursor:pointer;min-width:120px;transition:transform .04s,border-color .15s,background .15s
     }
     .btn:hover{border-color:var(--ring)}
-    .hr{height:1px;background:var(--border);margin:18px 0}
+    .btn:active{transform:translateY(1px)}
+    .btn--primary{background:var(--btn-bg-primary);border-color:var(--btn-br-primary);color:var(--btn-fg-primary)}
+    .btn--ghost{background:transparent}
 
-    /* =========================
-       ẢNH TRONG BÀI — ANTI-DISTORT
-       ========================= */
-    .prose figure{margin:14px 0}
-    .prose figcaption{margin-top:6px;font-size:0.92rem;color:var(--muted)}
-    .prose figure img,
-    .prose img{
-      display:block;max-width:100%;height:auto;
-      border-radius:12px;max-height:72vh;object-fit:contain;background:#0b0f15;
+    /* ===== Chips cuộn ngang ===== */
+    .nav-wrap{padding-top:2px}
+    .nav-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
+    .nav-scroll::-webkit-scrollbar{height:6px}
+    .nav-scroll::-webkit-scrollbar-thumb{background:#2b3446;border-radius:4px}
+    .chip{
+      display:inline-flex;align-items:center;justify-content:center;padding:8px 12px;height:34px;border-radius:999px;
+      border:1px solid var(--border);background:var(--chip-bg);color:var(--text);font-size:13px;flex:0 0 auto
     }
-    .prose img[width], .prose img[height]{width:auto !important;height:auto !important}
-    #article > img{
-      width:100%;max-height:440px;object-fit:cover;display:block;border-radius:12px;background:#0b0f15;
+    .chip:hover{border-color:var(--ring)}
+
+    /* ===== Lưới cards ===== */
+    .grid.cards{display:grid;gap:16px}
+    .grid.cards{grid-template-columns:repeat(1,minmax(0,1fr))}
+    @media(min-width:700px){.grid.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(min-width:1024px){.grid.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+    .card .thumb{width:100%;height:220px;object-fit:cover;display:block;background:#0b0f15}
+    .card .thumb--empty{width:100%;height:220px;background:#0b0f15;color:#667;display:flex;align-items:center;justify-content:center}
+    .card .pad{padding:14px}
+    .card .title{
+      margin:8px 0 6px;font-weight:800;font-size:18px;line-height:1.35;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden
     }
-    .rel-grid .card .cover img{
-      width:100%;height:220px;object-fit:cover;display:block;border-radius:12px;background:#0b0f15;
+    .card .excerpt{
+      color:var(--text);opacity:.85;font-size:15px;display:-webkit-box;
+      -webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden
+    }
+    .card .meta{margin-top:10px;color:var(--muted);font-size:13px}
+
+    @supports not (-webkit-line-clamp: 2) {
+      .card .title{max-height:48px;overflow:hidden}
+      .card .excerpt{max-height:96px;overflow:hidden}
+    }
+
+    /* ===== Responsive nhỏ ===== */
+    @media (max-width:720px){
+      .header{grid-template-columns:1fr;gap:12px}
+      .brand{font-size:20px}
+      .select{max-width:unset}
+      .btn{min-width:unset}
+      .actions{justify-content:flex-start}
     }
   </style>
   {% block extra_head %}{% endblock %}
@@ -77,28 +117,50 @@
 
     <div class="search">
       <form method="get" action="{% url 'home' %}">
-        <input name="q" value="{{ request.GET.q|default:'' }}" placeholder="Tìm bài..." />
+        <input class="input" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Tìm bài..." />
+        <select class="select" name="origin">
+          <option value="" {% if not request.GET.origin %}selected{% endif %}>-- Tất cả nguồn --</option>
+          <option value="user" {% if request.GET.origin == 'user' %}selected{% endif %}>User</option>
+          <option value="crawler" {% if request.GET.origin == 'crawler' %}selected{% endif %}>Crawler</option>
+        </select>
+        <select class="select" name="sort">
+          <option value="new" {% if request.GET.sort|default:'new' == 'new' %}selected{% endif %}>Mới nhất</option>
+          <option value="old" {% if request.GET.sort == 'old' %}selected{% endif %}>Cũ nhất</option>
+        </select>
+        <button class="btn btn--primary" type="submit">Lọc</button>
       </form>
     </div>
 
-    <div>
+    <div class="actions">
       {% if request.user.is_authenticated %}
-        <a class="btn" href="{% url 'submit_article' %}">Đăng bài</a>
-        <a class="chip" href="{% url 'my_articles' %}" style="margin-left:6px">Bài của tôi</a>
-        <a class="chip" href="{% url 'logout' %}" style="margin-left:6px">Đăng xuất</a>
+
+        <!-- CỤM 2 NÚT XẾP DỌC -->
+        <div class="stack">
+          <a class="btn" href="{% url 'submit_article' %}">Đăng bài</a>
+          {% if request.user.is_staff or request.user.is_superuser %}
+            <a class="btn" href="{% url 'admin_articles' %}">Admin</a>
+          {% endif %}
+        </div>
+
+        <!-- Các nút khác vẫn nằm hàng ngang -->
+        <a class="btn" href="{% url 'my_articles' %}">Bài của tôi</a>
+        <a class="btn btn--ghost" href="{% url 'logout' %}">Đăng xuất</a>
+
       {% else %}
-        <a class="btn" href="{% url 'login' %}">Đăng nhập</a>
-        <a class="chip" href="{% url 'register' %}" style="margin-left:6px">Đăng ký</a>
+        <a class="btn btn--primary" href="{% url 'login' %}">Đăng nhập</a>
+        <a class="btn" href="{% url 'register' %}">Đăng ký</a>
       {% endif %}
     </div>
   </header>
 
-
-  <nav class="container nav">
+  <nav class="container nav-wrap">
     {% if categories %}
-      {% for c in categories %}
-        <a class="chip" href="{% url 'category' slug=c.slug %}">{{ c.name }}</a>
-      {% endfor %}
+      <div class="nav-scroll">
+        <a class="chip" href="{% url 'home' %}">Tất cả</a>
+        {% for c in categories %}
+          <a class="chip" href="{% url 'category' slug=c.slug %}">{{ c.name }}</a>
+        {% endfor %}
+      </div>
     {% endif %}
   </nav>
 

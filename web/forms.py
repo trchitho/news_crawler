@@ -21,7 +21,31 @@ def is_phone(s: str) -> bool:
     return bool(PHONE_RE.fullmatch(s or ""))
 
 
-# --------- Auth forms ----------
+# web/forms.py (đoạn RegisterForm đã sửa)
+
+from django import forms
+from django.core.validators import EmailValidator
+from django.contrib.auth import get_user_model
+import re
+
+UserModel = get_user_model()
+
+# ---- Fallback helpers (chỉ dùng nếu bạn chưa định nghĩa sẵn) ----
+def _fallback_normalize_identifier(s: str) -> str:
+    if s is None:
+        return ""
+    s = s.strip()
+    # email -> lower; phone -> bỏ ký tự không phải số
+    if "@" in s:
+        return s.lower()
+    return re.sub(r"\D+", "", s)
+
+def _fallback_is_phone(s: str) -> bool:
+    # chấp nhận 9-11 chữ số (tuỳ bạn siết lại theo VN)
+    return bool(re.fullmatch(r"\d{9,11}", s))
+
+# -----------------------------------------------------------------
+
 class RegisterForm(forms.Form):
     full_name = forms.CharField(label="Họ và tên", max_length=120)
     email_or_mobile = forms.CharField(label="Email hoặc SĐT", max_length=120)
@@ -29,53 +53,109 @@ class RegisterForm(forms.Form):
     password2 = forms.CharField(label="Xác nhận mật khẩu", widget=forms.PasswordInput, min_length=6)
 
     def clean_email_or_mobile(self):
-        v = normalize_identifier(self.cleaned_data["email_or_mobile"])
-        if "@" in v:
-            EmailValidator(message="Email không hợp lệ")(v)
-        elif not is_phone(v):
-            raise forms.ValidationError("SĐT không hợp lệ")
-        if UserModel.objects.filter(username=v).exists():
-            raise forms.ValidationError("Tài khoản đã tồn tại")
-        return v
+        raw = self.cleaned_data.get("email_or_mobile", "")
+
+        # Dùng helper của bạn nếu có; nếu không, dùng fallback
+        norm = None
+        try:
+            norm = normalize_identifier(raw)  # type: ignore  # dùng hàm có sẵn của bạn
+        except NameError:
+            norm = _fallback_normalize_identifier(raw)
+
+        if "@" in norm:
+            # --- Email path ---
+            email_val = norm.lower()
+            EmailValidator(message="Email không hợp lệ")(email_val)
+
+            # Email phải unique (case-insensitive)
+            if UserModel.objects.filter(email__iexact=email_val).exists():
+                raise forms.ValidationError("Email đã được sử dụng, vui lòng chọn email khác.")
+
+            # Tránh username đụng đúng chuỗi email này (do bạn dùng email làm username khi đăng bằng email)
+            if UserModel.objects.filter(username__iexact=email_val).exists():
+                raise forms.ValidationError("Tên đăng nhập đã tồn tại, vui lòng dùng thông tin khác.")
+
+            return email_val
+        else:
+            # --- Phone path ---
+            try:
+                ok_phone = is_phone(norm)  # type: ignore  # dùng hàm có sẵn của bạn
+            except NameError:
+                ok_phone = _fallback_is_phone(norm)
+
+            if not ok_phone:
+                raise forms.ValidationError("SĐT không hợp lệ.")
+
+            # Username = SĐT phải unique
+            if UserModel.objects.filter(username__iexact=norm).exists():
+                raise forms.ValidationError("Tài khoản đã tồn tại.")
+
+            return norm
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("password1") != cleaned.get("password2"):
+        p1 = cleaned.get("password1") or ""
+        p2 = cleaned.get("password2") or ""
+        if p1 != p2:
             self.add_error("password2", "Mật khẩu xác nhận không khớp")
         return cleaned
 
     def save(self, request=None):
         data = self.cleaned_data
-        username = data["email_or_mobile"]
-        email = data["email_or_mobile"] if "@" in username else ""
+        username = data["email_or_mobile"]  # đã được normalize từ clean_email_or_mobile
+        # Nếu là email -> gán email; nếu là SĐT -> để rỗng (hoặc bạn có thể lưu vào field khác)
+        email = username if "@" in username else ""
+
         user = UserModel.objects.create_user(
-            username=username, email=email, password=data["password1"]
+            username=username,
+            email=email,
+            password=data["password1"],
         )
-        user.first_name = data["full_name"][:30]
+        # Lưu quick display name (tuỳ bạn có first/last_name hay full_name riêng)
+        user.first_name = (data.get("full_name") or "")[:30]
         user.save(update_fields=["first_name"])
         return user
 
 
+# web/forms.py
+from django import forms
+from django.contrib.auth import get_user_model, authenticate
+
+UserModel = get_user_model()
+
 class LoginForm(forms.Form):
-    email_or_mobile = forms.CharField(label="Email hoặc SĐT")
+    email_or_mobile = forms.CharField(label="Email hoặc SĐT", max_length=120)
     password = forms.CharField(label="Mật khẩu", widget=forms.PasswordInput)
 
     def clean(self):
         cleaned = super().clean()
-        ident = normalize_identifier(cleaned.get("email_or_mobile"))
+        ident = (cleaned.get("email_or_mobile") or "").strip().lower()
         pwd = cleaned.get("password") or ""
-        user = None
-        if ident:
-            user = authenticate(username=ident, password=pwd)
-            if not user and "@" in ident:
-                try:
-                    u = UserModel.objects.get(email=ident)
-                    user = authenticate(username=u.username, password=pwd)
-                except UserModel.DoesNotExist:
-                    pass
-        if not user:
-            raise forms.ValidationError("Sai thông tin đăng nhập")
-        cleaned["user"] = user
+
+        if not ident or not pwd:
+            # Django sẽ hiển thị “Trường này là bắt buộc.” cho field trống,
+            # nhưng ta giữ check này để tránh chạy tiếp authenticate khi thiếu dữ liệu
+            return cleaned
+
+        # Tìm user theo email (case-insensitive) trước
+        qs = UserModel.objects.filter(email__iexact=ident)
+        if not qs.exists():
+            # Không có theo email -> thử username (dùng cho SĐT)
+            qs = UserModel.objects.filter(username__iexact=ident)
+
+        if not qs.exists():
+            raise forms.ValidationError("Email/SĐT hoặc mật khẩu không đúng.")
+
+        if qs.count() > 1:
+            # Tránh login nhầm nếu vẫn còn dữ liệu trùng
+            raise forms.ValidationError("Email này đang có nhiều tài khoản. Hãy liên hệ quản trị để hợp nhất.")
+
+        user = qs.first()
+        auth_user = authenticate(username=user.username, password=pwd)
+        if not auth_user:
+            raise forms.ValidationError("Email/SĐT hoặc mật khẩu không đúng.")
+
+        cleaned["user"] = auth_user
         return cleaned
 
 
@@ -162,11 +242,22 @@ class ArticleCreateForm(forms.ModelForm):
             # biến lỗi thành ValidationError để view hiển thị đẹp
             raise forms.ValidationError(f"Lỗi lưu bài viết: {e}")
 
+# web/forms.py
+
+from django import forms
+from articles.models import Article
+from sources.models import Category
+from django.contrib.auth import get_user_model
+
+UserModel = get_user_model()
+
+
 class ArticleForm(forms.ModelForm):
     categories = forms.ModelMultipleChoiceField(
         queryset=Category.objects.all(),
         required=False,
-        widget=forms.SelectMultiple(attrs={"class": "w-full", "size": 6})
+        widget=forms.SelectMultiple(attrs={"class": "w-full", "size": 6}),
+        label="Danh mục"
     )
 
     class Meta:
@@ -182,27 +273,24 @@ class ArticleForm(forms.ModelForm):
             "content_html": forms.Textarea(attrs={"rows": 12, "class": "w-full monospace"}),
             "main_image_url": forms.URLInput(attrs={"class": "w-full"}),
             "main_image_caption": forms.TextInput(attrs={"class": "w-full"}),
+            "is_visible": forms.CheckboxInput(),
         }
 
-        def save(self, commit=True, author=None):
-            obj = super().save(commit=False)
-            # Bài do user đăng
-            try:
-                obj.origin = "user"
-            except Exception:
-                pass
-            if author and getattr(obj, "author_id", None) is None:
-                obj.author = author
-            # Nếu không set published_at -> để None hoặc now() tuỳ bạn
-            # ở đây: giữ nguyên giá trị form đã nhập; không ép now().
-            if commit:
-                obj.save()
-                # ManyToMany
-                try:
-                    self.save_m2m()
-                except Exception:
-                    pass
-            return obj
+    def save(self, commit=True, author=None):
+        obj = super().save(commit=False)
+        # Gắn cờ bài user đăng
+        obj.origin = "user"
+
+        # Nếu có author truyền vào → gắn vào bài
+        if author and getattr(obj, "author_id", None) is None:
+            obj.author = author
+
+        if commit:
+            obj.save()
+            # ManyToMany (categories)
+            self.save_m2m()
+        return obj
+
         
     # web/forms.py  (thêm/điều chỉnh nếu bạn đang đặt form ở đây)
 from django import forms

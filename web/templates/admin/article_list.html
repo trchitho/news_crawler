@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Quản trị bài viết{% endblock %}
+
+{% block content %}
+<h2 style="margin:6px 0 12px">Quản trị bài viết</h2>
+
+<form method="get" style="display:flex;gap:8px;margin-bottom:10px">
+  <input name="q" value="{{ q }}" placeholder="Tìm tiêu đề, mô tả..." style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+  <select name="origin" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+    <option value="">-- Tất cả nguồn --</option>
+    <option value="user" {% if origin == "user" %}selected{% endif %}>User</option>
+    <option value="crawler" {% if origin == "crawler" %}selected{% endif %}>Crawler</option>
+  </select>
+  <button class="btn" type="submit">Lọc</button>
+  <form method="post" action="{% url 'admin_crawl_now' %}" style="margin-left:auto">
+    {% csrf_token %}
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <!-- Lọc nguồn sẵn có của bạn ... -->
+
+      <form method="post" action="{% url 'admin_crawl_now' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--primary">
+          <span style="margin-right:6px">🔄</span> Cập nhật (crawl)
+        </button>
+      </form>
+    </div>
+
+  </form>
+</form>
+
+<div class="card" style="overflow:auto">
+  <table style="width:100%;border-collapse:collapse">
+    <thead>
+      <tr class="muted" style="text-align:left">
+        <th style="padding:10px">Tiêu đề</th>
+        <th>Nguồn</th>
+        <th>Tác giả (email)</th>
+        <th>Đăng lúc</th>
+        <th style="width:180px">Thao tác</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in page_obj %}
+      <tr style="border-top:1px solid var(--border)">
+        <td style="padding:8px">
+          <a href="{% url 'article_detail' a.slug %}" target="_blank">{{ a.title|default:"(không tiêu đề)" }}</a>
+        </td>
+        <td style="padding:8px">{{ a.origin }}</td>
+        <td style="padding:8px">
+          {% if a.author %}
+            {{ a.author.get_full_name|default:a.author.username }}
+            <span class="muted">({{ a.author.email|default:"—" }})</span>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td style="padding:8px">{{ a.published_at|date:"H:i d/m/Y" }}</td>
+        <td style="padding:8px;display:flex;gap:6px">
+          {% if a.origin == "user" %}
+            <a class="btn" href="{% url 'admin_article_edit' a.id %}">Sửa</a>
+          {% else %}
+            <span class="muted" title="Bài crawler chỉ có thể xoá">Không sửa</span>
+          {% endif %}
+          <form method="post" action="{% url 'admin_article_delete' a.id %}" onsubmit="return confirm('Xoá bài này?')">
+            {% csrf_token %}
+            <button class="btn" type="submit">Xoá</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" style="padding:12px">Không có bài.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+    {% if page_obj.has_previous %}
+      <a class="btn" href="?q={{ q }}&origin={{ origin }}&page={{ page_obj.previous_page_number }}">← Trước</a>
+    {% endif %}
+    <span class="muted" style="align-self:center">Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a class="btn" href="?q={{ q }}&origin={{ origin }}&page={{ page_obj.next_page_number }}">Sau →</a>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Sửa bài do người dùng đăng{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:980px;margin:0 auto;padding:18px 18px 20px">
+  <h2 style="margin:6px 0 16px">Sửa bài</h2>
+
+  {% if messages %}
+    <ul class="muted" style="margin:0 0 10px;padding-left:18px">
+      {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if form.non_field_errors %}
+    <div class="muted" style="color:#ff7b7b;margin-bottom:8px">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+
+    <!-- Tiêu đề -->
+    <label style="display:block;margin:10px 0 6px;font-weight:700">Tiêu đề</label>
+    <input
+      type="text"
+      name="{{ form.title.name }}"
+      value="{{ form.title.value|default_if_none:'' }}"
+      class="w-full"
+      style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ring);background:var(--card);color:var(--text);outline:0;font-size:15px"
+    />
+    {% for e in form.title.errors %}<div class="muted" style="color:#ff7b7b">{{ e }}</div>{% endfor %}
+
+    <!-- Tóm tắt -->
+    <label style="display:block;margin:14px 0 6px;font-weight:700">Tóm tắt</label>
+    <textarea
+      name="{{ form.excerpt.name }}"
+      rows="4"
+      class="w-full"
+      style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ring);background:var(--card);color:var(--text);outline:0;font-size:15px">{{ form.excerpt.value|default_if_none:'' }}</textarea>
+    {% for e in form.excerpt.errors %}<div class="muted" style="color:#ff7b7b">{{ e }}</div>{% endfor %}
+
+    <!-- Lưới 2 cột: Nội dung | Ảnh + Chuyên mục -->
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:14px">
+      <div>
+        <label style="display:block;margin:0 0 6px;font-weight:700">Nội dung</label>
+        <textarea
+          name="{{ form.content_html.name }}"
+          rows="16"
+          class="w-full monospace"
+          style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ring);background:var(--card);color:var(--text);outline:0;font-size:15px">{{ form.content_html.value|default_if_none:'' }}</textarea>
+        {% for e in form.content_html.errors %}<div class="muted" style="color:#ff7b7b">{{ e }}</div>{% endfor %}
+      </div>
+
+      <div>
+        <!-- Ảnh tiêu đề (URL) -->
+        <label style="display:block;margin:0 0 6px;font-weight:700">Ảnh tiêu đề (URL)</label>
+        <input
+          type="url"
+          name="{{ form.main_image_url.name }}"
+          value="{{ form.main_image_url.value|default_if_none:'' }}"
+          placeholder="https://...jpg"
+          class="w-full"
+          style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ring);background:var(--card);color:var(--text);outline:0;font-size:15px"
+        />
+        {% for e in form.main_image_url.errors %}<div class="muted" style="color:#ff7b7b">{{ e }}</div>{% endfor %}
+        <div class="muted" style="font-size:12px;margin:6px 0 10px">
+          Dùng link ảnh trực tiếp (jpg/png…). Nếu để trống, hệ thống sẽ tự lấy ảnh đầu tiên trong nội dung.
+        </div>
+
+        <!-- Chú thích ảnh (giữ trường bạn có) -->
+        <label style="display:block;margin:10px 0 6px;font-weight:700">Chú thích ảnh</label>
+        <input
+          type="text"
+          name="{{ form.main_image_caption.name }}"
+          value="{{ form.main_image_caption.value|default_if_none:'' }}"
+          class="w-full"
+          style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ring);background:var(--card);color:var(--text);outline:0;font-size:15px"
+        />
+        {% for e in form.main_image_caption.errors %}<div class="muted" style="color:#ff7b7b">{{ e }}</div>{% endfor %}
+
+        <!-- Preview ảnh -->
+        <div class="card" style="padding:10px;text-align:center;margin-top:8px">
+          {% if form.main_image_url.value %}
+            <img src="{{ form.main_image_url.value }}" alt=""
+                 style="max-width:100%;max-height:180px;object-fit:contain;border-radius:10px;background:#0b0f15" />
+          {% else %}
+            <div class="muted" style="padding:18px 0">Chưa có ảnh</div>
+          {% endif %}
+        </div>
+
+        <!-- Chuyên mục -->
+        <label style="display:block;margin:14px 0 6px;font-weight:700">Chuyên mục</label>
+        {{ form.categories }}
+        {% for e in form.categories.errors %}<div class="muted" style="color:#ff7b7b">{{ e }}</div>{% endfor %}
+
+        <!-- Hiển thị -->
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
+          <input type="checkbox" name="{{ form.is_visible.name }}"
+                 {% if form.is_visible.value or form.is_visible.value is None %}checked{% endif %} />
+          Hiển thị
+        </label>
+      </div>
+    </div>
+
+    <!-- Nút -->
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn" type="submit">Lưu</button>
+      <a class="btn" href="{% url 'admin_articles' %}">Quản lý bài đã đăng</a>
+      <a class="btn" href="{% url 'admin_articles' %}">Huỷ</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

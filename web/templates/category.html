@@ -1,45 +1,49 @@
 {% extends "base.html" %}
-{% block title %}{{ category.name }} — VN News{% endblock %}
+{% block title %}{{ category.name }} • VN News{% endblock %}
 
 {% block content %}
-  <h2 style="margin:6px 0 10px 0">{{ category.name }}</h2>
+  <h2 style="margin:6px 0 14px">{{ category.name }}</h2>
 
-  {% if object_list %}
-    <section class="grid cards">
-      {% for a in object_list %}
-        <article class="card">
-          <a class="cover" href="{% url 'article_detail' slug=a.slug %}">
-            {% if a.main_image_url %}
-              <img src="{{ a.main_image_url }}" alt="">
-            {% else %}
-              <img src="https://picsum.photos/800/400?random={{ a.id }}" alt="">
-            {% endif %}
+  <div class="grid cards">
+    {% for a in page_obj %}
+      {# Card thống nhất với trang chủ #}
+      <article class="card">
+        {% if a.main_image_url %}
+          <a href="{{ a.get_absolute_url }}">
+            <img class="thumb" src="{{ a.main_image_url }}" alt="{{ a.title|default_if_none:'image' }}">
           </a>
-          <div class="body">
-            <a class="title" href="{% url 'article_detail' slug=a.slug %}">{{ a.title }}</a>
-            {% if a.excerpt %}<p class="excerpt">{{ a.excerpt }}</p>{% endif %}
-            <p class="meta">
-              {% if a.published_at %}{{ a.published_at|date:"H:i d/m/Y" }}{% endif %}
-            </p>
+        {% endif %}
+        <div class="body">
+          <h3 class="title">
+            <a href="{{ a.get_absolute_url }}">{{ a.title }}</a>
+          </h3>
+          {% if a.excerpt %}
+            <p class="excerpt">{{ a.excerpt }}</p>
+          {% endif %}
+          <div class="meta">
+            <span>{{ a.published_at|date:"H:i d/m/Y" }}</span>
+            {% if a.categories.all %}
+              • <span>{{ a.categories.first.name }}</span>
+            {% endif %}
           </div>
-        </article>
-      {% endfor %}
-    </section>
+        </div>
+      </article>
+    {% empty %}
+      <div class="card" style="padding:16px">Chưa có bài trong chuyên mục này.</div>
+    {% endfor %}
+  </div>
 
-    {% if is_paginated %}
-      <div style="display:flex;gap:10px;justify-content:center;margin-top:20px">
-        {% if page_obj.has_previous %}
-          <a class="btn" href="?page={{ page_obj.previous_page_number }}">← Trước</a>
-        {% endif %}
-        <span class="muted" style="align-self:center">Trang {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-        {% if page_obj.has_next %}
-          <a class="btn" href="?page={{ page_obj.next_page_number }}">Sau →</a>
-        {% endif %}
-      </div>
-    {% endif %}
-  {% else %}
-    <div class="card" style="padding:18px">
-      <b>Danh mục chưa có bài.</b>
+  {% if page_obj.paginator.num_pages > 1 %}
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+      {% if page_obj.has_previous %}
+        <a class="btn" href="?page={{ page_obj.previous_page_number }}">← Trước</a>
+      {% endif %}
+      <span class="muted" style="align-self:center">
+        Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}
+      </span>
+      {% if page_obj.has_next %}
+        <a class="btn" href="?page={{ page_obj.next_page_number }}">Sau →</a>
+      {% endif %}
     </div>
   {% endif %}
 {% endblock %}

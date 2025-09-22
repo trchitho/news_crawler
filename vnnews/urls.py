@@ -5,6 +5,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView
 
+from django.contrib import admin
+from django.urls import path
+from web.views import HomeView, ArticleDetailView, CategoryView, post_comment, react_article
+from web.views_admin import AdminArticleListView, AdminArticleEditView, admin_delete_article, admin_crawl_now
+
 # Views
 from web.views import (
     HomeView,
@@ -43,6 +48,12 @@ urlpatterns = [
     path("auth/login/", views_auth.page_login, name="login"),
     path("auth/register/", views_auth.page_register, name="register"),
     path("auth/logout/", views_auth.page_logout, name="logout"),
+
+    # Admin panel (chỉ cho admin)
+    path("admin-panel/articles/", AdminArticleListView.as_view(), name="admin_articles"),
+    path("admin-panel/articles/<int:pk>/edit/", AdminArticleEditView.as_view(), name="admin_article_edit"),
+    path("admin-panel/articles/<int:pk>/delete/", admin_delete_article, name="admin_article_delete"),
+    path("admin-panel/crawl-now/", admin_crawl_now, name="admin_crawl_now"),
 
     # Auth APIs (nếu có dùng AJAX)
     path("auth/api/register/", views_auth.api_register, name="api_register"),

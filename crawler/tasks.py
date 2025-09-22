@@ -38,24 +38,41 @@ def _parse_datetime(s):
         return None
 
 
+# crawler/tasks.py
+from django.utils.text import slugify
+from sources.models import Category
+
 def _pick_category(title: str) -> Category | None:
+    """
+    Chọn category dựa trên từ khóa trong tiêu đề.
+    Nếu không match thì fallback category đầu tiên hoặc tạo 'Khác'.
+    """
     if not title:
         return Category.objects.order_by("id").first()
+
     t = title.lower()
     mapping = [
-        (["bóng đá","thể thao","world cup","v-league"], "Thể thao"),
-        (["kinh tế","tài chính","chứng khoán","doanh nghiệp","giá xăng"], "Kinh tế"),
-        (["giáo dục","học sinh","thi tốt nghiệp","đại học"], "Giáo dục"),
-        (["công nghệ","ai ","trí tuệ nhân tạo","iphone","android","mạng xã hội"], "Công nghệ"),
-        (["chính phủ","quốc hội","bộ trưởng","thời sự"], "Thời sự"),
+        (["bóng đá", "thể thao", "world cup", "v-league"], "Thể thao"),
+        (["kinh tế", "tài chính", "chứng khoán", "doanh nghiệp", "giá xăng"], "Kinh tế"),
+        (["giáo dục", "học sinh", "thi tốt nghiệp", "đại học"], "Giáo dục"),
+        (["công nghệ", "ai ", "trí tuệ nhân tạo", "iphone", "android", "mạng xã hội"], "Công nghệ"),
+        (["chính phủ", "quốc hội", "bộ trưởng", "thời sự"], "Thời sự"),
+        (["sức khỏe", "bệnh", "dịch", "vaccine", "y tế"], "Sức khỏe"),
+        (["giải trí", "showbiz", "ca sĩ", "phim", "nghệ sĩ"], "Giải trí"),
+        (["du lịch", "resort", "khách sạn", "travel"], "Du lịch"),
     ]
     for kws, catname in mapping:
         if any(kw in t for kw in kws):
             cat, _ = Category.objects.get_or_create(
-                name=catname, defaults={"slug": slugify(catname)}
+                name=catname,
+                defaults={"slug": slugify(catname)}
             )
             return cat
-    return Category.objects.order_by("id").first()
+
+    # fallback
+    fallback, _ = Category.objects.get_or_create(name="Khác", defaults={"slug": "khac"})
+    return fallback
+
 
 
 def _extract_image_from_meta(html):
@@ -77,17 +94,17 @@ def _sanitize_html(html: str) -> str:
     return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
 
 
-def _fetch_and_save_article(source_id: int, url: str, published_str: str | None = None):
+def _fetch_and_save_article(source_id: int, url: str, published_str: str | None = None) -> str:
     src = Source.objects.get(pk=source_id)
 
-    # fetch raw html
-    html = fetch_url(url)
+    # 1. tải HTML
+    html = fetch_url(url) or ""
     if not html:
-        r = requests.get(url, headers=HEADERS, timeout=20)
+        r = requests.get(url, headers={"User-Agent": "vnnewsbot"}, timeout=20)
         r.raise_for_status()
         html = r.text
 
-    # readability
+    # 2. readability + sanitize
     try:
         doc = Document(html)
         main_html = doc.summary(html_partial=True)
@@ -95,12 +112,12 @@ def _fetch_and_save_article(source_id: int, url: str, published_str: str | None 
     except Exception:
         cleaned_html = ""
 
-    # plain text
+    # 3. plain text (để check độ dài / fallback excerpt)
     text = extract(html, include_comments=False, include_links=False) or ""
     if len(text.strip()) < 300 and len(cleaned_html) < 300:
         return "too_short"
 
-    # metadata
+    # 4. metadata
     meta = None
     try:
         meta = extract_metadata(html, url)
@@ -109,20 +126,21 @@ def _fetch_and_save_article(source_id: int, url: str, published_str: str | None 
 
     title = (getattr(meta, "title", None) or "").strip()
     description = (getattr(meta, "description", None) or "").strip()
-    meta_image = (getattr(meta, "image", None) or "") or _extract_image_from_meta(html)
+    meta_image = (getattr(meta, "image", None) or "")
 
     pub_dt = _parse_datetime(published_str)
     if pub_dt and timezone.is_naive(pub_dt):
         pub_dt = timezone.make_aware(pub_dt, timezone.get_current_timezone())
 
+    # 5. pick category theo title hoặc text
     category = _pick_category(title or text[:120])
 
+    # 6. parse thêm bằng utils
     parsed = fetch_and_extract(url)
-
     if parsed.get("content_html") and len(parsed["content_html"]) > len(cleaned_html):
         cleaned_html = parsed["content_html"]
 
-    # create or update
+    # 7. tạo hoặc update Article
     article, created = Article.objects.get_or_create(
         source_url=url,
         defaults=dict(
@@ -139,7 +157,6 @@ def _fetch_and_save_article(source_id: int, url: str, published_str: str | None 
 
     changed = []
 
-    # update fields if better data available
     if cleaned_html and (not article.content_html or len(article.content_html) < len(cleaned_html)):
         article.content_html = cleaned_html
         changed.append("content_html")
@@ -148,9 +165,8 @@ def _fetch_and_save_article(source_id: int, url: str, published_str: str | None 
         article.blocks = parsed["blocks"]
         changed.append("blocks")
 
-    best_img = parsed.get("main_image_url") or meta_image
-    if best_img and not article.main_image_url:
-        article.main_image_url = best_img[:1000]
+    if (parsed.get("main_image_url") or meta_image) and not article.main_image_url:
+        article.main_image_url = (parsed.get("main_image_url") or meta_image)[:1000]
         changed.append("main_image_url")
 
     if parsed.get("main_image_caption") and not article.main_image_caption:
@@ -165,9 +181,8 @@ def _fetch_and_save_article(source_id: int, url: str, published_str: str | None 
         article.published_at = pub_dt
         changed.append("published_at")
 
-    if hasattr(article, "categories") and category:
-        if not article.categories.filter(pk=category.pk).exists():
-            article.categories.add(category)
+    if category and not article.categories.filter(pk=category.pk).exists():
+        article.categories.add(category)
 
     if article.is_visible is False:
         article.is_visible = True

@@ -1,0 +1,23 @@
+{# web/templates/partials/_article_card.html #}
+<article class="card">
+  {% if a.main_image_url %}
+    <img class="thumb" src="{{ a.main_image_url }}" alt="{{ a.title|default_if_none:'' }}">
+  {% else %}
+    <div class="thumb--empty">Không có ảnh</div>
+  {% endif %}
+
+  <div class="pad">
+    <a href="{% url 'article_detail' slug=a.slug %}" class="title">{{ a.title }}</a>
+
+    {% if a.excerpt %}
+      <div class="excerpt">{{ a.excerpt }}</div>
+    {% endif %}
+
+    <div class="meta">
+      {{ a.published_at|date:"H:i d/m/Y" }}
+      {% if a.categories.all %}
+        • {{ a.categories.all.0.name }}
+      {% endif %}
+    </div>
+  </div>
+</article>

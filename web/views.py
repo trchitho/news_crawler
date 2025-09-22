@@ -25,63 +25,7 @@ from django.shortcuts import redirect, render, get_object_or_404
 from .forms import ArticleForm, SubmitArticleForm
 from articles.models import Article
 
-class ArticleDetailView(DetailView):
-    model = Article
-    template_name = "article_detail.html"
-    slug_field = "slug"
-    slug_url_kwarg = "slug"
-    context_object_name = "a"
 
-    def get_queryset(self):
-        # vẫn giữ prefetch categories; comment/reactions chỉ prefetch khi có related_name tương ứng
-        return (
-            Article.objects.filter(is_visible=True)
-            .prefetch_related("categories")
-        )
-
-    def get_context_data(self, **kwargs):
-        from django.db.models import Q, Count
-
-        ctx = super().get_context_data(**kwargs)
-        a = self.object
-
-        # ---- Reaction counts (trả về 'counts' để khớp template) ----
-        try:
-            from web.models import Reaction
-            base = {k.label: 0 for k in Reaction.Kind}
-            agg = Reaction.objects.filter(article=a).values("value").annotate(n=Count("id"))
-            counts = base | {Reaction.Kind(r["value"]).label: r["n"] for r in agg}
-        except Exception:
-            counts = {"like": 0, "love": 0, "wow": 0, "sad": 0, "angry": 0}
-        ctx["counts"] = counts
-
-        # ---- Comments (nếu có model) ----
-        try:
-            from web.models import Comment
-            ctx["comments"] = Comment.objects.filter(article=a).order_by("-created_at")
-        except Exception:
-            ctx["comments"] = []
-
-        # ---- Related: CHỈ cùng category, exclude bài hiện tại, ưu tiên trùng nhiều category ----
-        cat_ids = list(a.categories.values_list("id", flat=True))
-        if cat_ids:
-            related_qs = (
-                Article.objects.filter(is_visible=True, categories__id__in=cat_ids)
-                .exclude(pk=a.pk)
-                .annotate(
-                    same_cats=Count("categories", filter=Q(categories__id__in=cat_ids), distinct=True)
-                )
-                .order_by("-same_cats", "-published_at")
-                .distinct()[:8]
-            )
-            ctx["related"] = list(related_qs)
-        else:
-            # Không có category -> không gợi ý để tránh lạc chủ đề
-            ctx["related"] = []
-
-        # Template đang dùng biến 'object' cho form comment
-        ctx["object"] = a
-        return ctx
 
 
 
@@ -274,104 +218,211 @@ def search_articles(qs, q: str):
         logging.exception("Search error: %s", e)
         return qs  # không lọc nếu có lỗi
 
-# web/views.py (thêm import)
-from django.contrib.auth.decorators import login_required
-from django.utils.decorators import method_decorator
-from django.core.paginator import Paginator
-from django.shortcuts import render, redirect
+
+# =========================
+# Helpers
+# =========================
+
+from django.contrib.admin.views.decorators import staff_member_required
+from django.views.decorators.http import require_POST
+from django.shortcuts import redirect
 from django.contrib import messages
 
-from .forms import ArticleCreateForm, ArticleSubmitFormSimple
-from articles.models import Article
+@staff_member_required
+@require_POST
+def admin_crawl_now(request):
+    """
+    Chạy crawl ngay: nếu có Celery thì .delay(), không có thì chạy đồng bộ.
+    """
+    try:
+        from crawler.tasks import crawl_all_sources
+    except Exception:
+        crawl_all_sources = None
 
-# web/views.py  (only the affected views)
+    try:
+        if crawl_all_sources:
+            # Có Celery -> đẩy task nền
+            try:
+                crawl_all_sources.delay()
+                messages.success(request, "Đã gửi yêu cầu crawl (chạy nền).")
+            except Exception:
+                # fallback đồng bộ nếu Celery chưa bật
+                crawl_all_sources()
+                messages.success(request, "Đã crawl đồng bộ.")
+        else:
+            # Không có task -> fallback util
+            from crawler.utils import crawl_all_sources_sync  # nếu bạn có util sync
+            crawl_all_sources_sync()
+            messages.success(request, "Đã crawl đồng bộ.")
+    except Exception as e:
+        messages.error(request, f"Lỗi crawl: {e}")
 
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
-from django.utils import timezone
-from django.contrib import messages
+    return redirect("admin_articles")
 
-from articles.models import Article
-from .forms import ArticleSubmitForm
 
-# add near the top
-from django.utils.text import slugify
-import time
+def _common_filters(qs, request):
+    """Áp dụng q / origin / sort giống nhau cho Home & Category."""
+    q = (request.GET.get("q") or "").strip()
+    origin = (request.GET.get("origin") or "").strip()
+    sort = (request.GET.get("sort") or "new").strip()
 
-from crawler.utils import normalize_image_url
-# web/views.py
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
-from django.utils import timezone
+    if q:
+        qs = qs.filter(
+            Q(title__icontains=q) |
+            Q(excerpt__icontains=q) |
+            Q(search_blob__icontains=q.lower())
+        )
+    if origin in {"user", "crawler"}:
+        qs = qs.filter(origin=origin)
 
-from articles.models import Article
-from crawler.utils import normalize_image_url
+    if sort == "old":
+        qs = qs.order_by("published_at", "id")
+    else:
+        qs = qs.order_by("-published_at", "-id")
+    return qs
 
+def _common_ctx(ctx):
+    """Đưa list categories vào base để render dải chip."""
+    ctx["categories"] = Category.objects.order_by("name")
+    return ctx
+
+# =========================
+# Home
+# =========================
+
+class HomeView(ListView):
+    template_name = "home.html"
+    context_object_name = "articles"
+    paginate_by = 18  # 3 cột * 6 hàng
+
+    def get_queryset(self):
+        qs = Article.objects.filter(is_visible=True).prefetch_related("categories").select_related("author")
+        qs = _common_filters(qs, self.request)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        return _common_ctx(ctx)
+
+# =========================
+# Category
+# =========================
+
+class CategoryView(ListView):
+    template_name = "category.html"
+    paginate_by = 18
+
+    def get_queryset(self):
+        self.category = get_object_or_404(Category, slug=self.kwargs["slug"])
+        qs = (Article.objects.filter(is_visible=True, categories=self.category)
+              .prefetch_related("categories").select_related("author"))
+        qs = _common_filters(qs, self.request)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["category"] = self.category
+        return _common_ctx(ctx)
+
+# =========================
+# Detail
+# =========================
+
+class ArticleDetailView(DetailView):
+    model = Article
+    template_name = "article_detail.html"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+    context_object_name = "a"
+
+    def get_queryset(self):
+        return Article.objects.filter(is_visible=True).prefetch_related("categories")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        a = self.object
+
+        # Reactions
+        base = {k.label: 0 for k in Reaction.Kind}
+        agg = Reaction.objects.filter(article=a).values("value").annotate(n=Count("id"))
+        for r in agg:
+            base[Reaction.Kind(r["value"]).label] = r["n"]
+        ctx["counts"] = base
+
+        # Comments
+        try:
+            ctx["comments"] = Comment.objects.filter(article=a).order_by("-created_at")
+        except Exception:
+            ctx["comments"] = []
+
+        # Related: chỉ cùng category, ưu tiên trùng nhiều cat
+        cat_ids = list(a.categories.values_list("id", flat=True))
+        if cat_ids:
+            related_qs = (Article.objects.filter(is_visible=True, categories__id__in=cat_ids)
+                          .exclude(pk=a.pk)
+                          .annotate(same_cats=Count("categories",
+                                                    filter=Q(categories__id__in=cat_ids),
+                                                    distinct=True))
+                          .order_by("-same_cats", "-published_at")
+                          .distinct()[:8])
+            ctx["related"] = list(related_qs)
+        else:
+            ctx["related"] = []
+
+        ctx["object"] = a
+        return _common_ctx(ctx)
+
+# =========================
+# Submit / My Articles / Edit / Delete
+# =========================
+
+from .forms import SubmitArticleForm
 
 @login_required
 def submit_article(request):
-    """
-    Trang cho phép user đăng bài mới.
-    Yêu cầu đã đăng nhập (login_required).
-    """
     if request.method == "POST":
         form = SubmitArticleForm(request.POST)
         if form.is_valid():
-            # Tạo article mới nhưng chưa commit để chỉnh field
-            article = form.save(commit=False)
-            article.author = request.user
-            article.is_visible = True
-            article.published_at = timezone.now()
-
-            # Chuẩn hoá ảnh đại diện
-            raw_url = form.cleaned_data.get("main_image_url")
-            article.main_image_url = normalize_image_url(raw_url)
-
-            # Lưu article
-            article.save()
-
-            # Nếu form có categories (M2M) thì phải save_m2m
+            a = form.save(commit=False)
+            a.author = request.user
+            a.origin = "user"
+            a.is_visible = True
+            if not a.published_at:
+                a.published_at = timezone.now()
+            a.save()
             form.save_m2m()
-
+            messages.success(request, "Đã đăng bài.")
             return redirect("my_articles")
     else:
         form = SubmitArticleForm()
-
     return render(request, "articles/submit.html", {"form": form})
-
-
 
 @login_required
 def my_articles(request):
-    qs = Article.objects.filter(author=request.user).order_by("-created_at", "-id")
+    qs = (Article.objects.filter(author=request.user)
+          .order_by("-created_at", "-id")
+          .prefetch_related("categories"))
     return render(request, "articles/my_articles.html", {"articles": qs})
 
 @login_required
 def submit_article_edit(request, pk: int):
-    obj = get_object_or_404(Article, pk=pk, author=request.user)
+    a = get_object_or_404(Article, pk=pk, author=request.user)
     if request.method == "POST":
-        form = ArticleSubmitForm(request.POST, instance=obj)
+        form = SubmitArticleForm(request.POST, instance=a)
         if form.is_valid():
-            obj = form.save(commit=False)
-            if not obj.main_image_url:
-                auto = form.extract_first_image()
-                if auto:
-                    obj.main_image_url = auto
-            obj.save()
+            a = form.save(commit=False)
+            if not a.published_at:
+                a.published_at = timezone.now()
+            a.save()
             form.save_m2m()
             messages.success(request, "Đã cập nhật bài viết.")
             return redirect("my_articles")
     else:
-        form = ArticleSubmitForm(instance=obj)
+        form = SubmitArticleForm(instance=a)
     return render(request, "articles/submit.html", {"form": form, "edit_mode": True})
-
-
 
 @login_required
 def submit_article_delete(request, pk: int):
-    """
-    Xóa bài do chính user đăng (templates: web/templates/confirm_delete.html)
-    """
     a = get_object_or_404(Article, pk=pk, author=request.user)
     if request.method == "POST":
         a.delete()
@@ -381,76 +432,6 @@ def submit_article_delete(request, pk: int):
 
 
 
-class HomeView(ListView):
-    model = Article
-    template_name = "home.html"
-    paginate_by = 20
-
-    def get_queryset(self):
-        qs = Article.objects.filter(is_visible=True)
-        q = self.request.GET.get("q")
-        sort = self.request.GET.get("sort")
-
-        # Tìm kiếm bỏ dấu
-        if q:
-            from django.db.models import Q
-            from .views import normalize_query
-            nq = normalize_query(q)
-            qs = qs.filter(Q(search_blob__icontains=nq))
-
-        # Sắp xếp theo dropdown
-        if sort == "oldest":
-            qs = qs.order_by("published_at")
-        elif sort == "source":
-            # cần select_related nếu có ForeignKey tới Source
-            qs = qs.select_related().order_by("categories__name", "-published_at")
-        else:  # default newest
-            qs = qs.order_by("-published_at")
-
-        return qs
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx["categories"] = Category.objects.all().order_by("name")[:50]
-        ctx["q"] = self.request.GET.get("q", "")
-        ctx["sort"] = self.request.GET.get("sort", "")
-        return ctx
-    
-    
-
-
-class CategoryView(ListView):
-    template_name = "category.html"
-    context_object_name = "articles"
-    paginate_by = 12
-
-    def dispatch(self, request, *args, **kwargs):
-        self.cat = get_object_or_404(Category, slug=kwargs.get("slug"))
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_queryset(self):
-        qs = Article.objects.filter(is_visible=True)
-        # lọc theo category nếu có M2M, else fallback theo tên
-        try:
-            has_categories = any(f.many_to_many and f.name == "categories" for f in Article._meta.get_fields())
-        except Exception:
-            has_categories = False
-
-        if has_categories:
-            qs = qs.filter(categories=self.cat)
-        else:
-            qs = qs.filter(Q(title__icontains=self.cat.name) | Q(excerpt__icontains=self.cat.name))
-
-        q = self.request.GET.get("q", "")
-        qs = search_articles(qs, q)
-        return qs.order_by("-published_at", "-id")
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx["category"] = self.cat
-        ctx["categories"] = Category.objects.all().order_by("name")[:50]
-        ctx["q"] = self.request.GET.get("q", "")
-        return ctx
 
 
 

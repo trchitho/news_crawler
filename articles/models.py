@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 
-# -- Utils -------------------------------------------------
+# -------- Utils -------------------------------------------------
 def _norm(s: str | None) -> str:
     """
     Normalize: bỏ dấu, lower, trim. Luôn bắt ngoại lệ để không crash.
@@ -19,7 +19,6 @@ def _norm(s: str | None) -> str:
         s = unicodedata.normalize("NFKD", s)
         s = s.encode("ascii", "ignore").decode("utf-8")
     except Exception:
-        # bắt mọi ngoại lệ normalize để không crash
         s = s or ""
     return s.lower().strip()
 
@@ -30,7 +29,7 @@ _tag_re = re.compile(r"<[^>]+>")
 def _strip_html(html: str) -> str:
     """
     (Giữ lại để dùng nơi khác) Bóc HTML -> text thô.
-    Không còn dùng cho search_blob theo yêu cầu mới.
+    Không dùng cho search_blob theo yêu cầu mới.
     """
     if not html:
         return ""
@@ -40,7 +39,7 @@ def _strip_html(html: str) -> str:
     return txt
 
 
-# -- Models ------------------------------------------------
+# -------- Models ------------------------------------------------
 class Article(models.Model):
     class Origin(models.TextChoices):
         CRAWLER = "crawler", "Crawler"
@@ -58,6 +57,7 @@ class Article(models.Model):
     main_image_url = models.URLField(blank=True, default="")
     main_image_caption = models.CharField(max_length=500, blank=True, default="")
 
+    # Có thể lưu cấu trúc chi tiết (đoạn/ảnh/quote...) nếu crawler sinh ra
     blocks = models.JSONField(blank=True, null=True, default=dict)
 
     # Tác giả khi đăng tay; bài crawl thì để trống
@@ -68,6 +68,7 @@ class Article(models.Model):
         null=True,
         on_delete=models.SET_NULL,
     )
+
     origin = models.CharField(max_length=16, choices=Origin.choices, default=Origin.CRAWLER)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -79,9 +80,8 @@ class Article(models.Model):
     # DÙNG CHO SEARCH: chỉ chứa title + excerpt đã normalize
     search_blob = models.TextField(blank=True, default="")
 
-    categories = models.ManyToManyField(
-        "sources.Category", related_name="articles", blank=True
-    )
+    # Liên kết category (từ app sources)
+    categories = models.ManyToManyField("sources.Category", related_name="articles", blank=True)
 
     class Meta:
         ordering = ("-published_at", "-id")
@@ -99,12 +99,12 @@ class Article(models.Model):
             if not self.slug and self.title:
                 self.slug = slugify(self.title)[:520]
         except Exception:
-            # giữ nguyên nếu slugify lỗi vì input lạ
             pass
 
-        # Nếu có author mà chưa set origin -> coi là USER
-        if self.author_id and not self.origin:
+        # Nếu có author -> luôn coi là bài user
+        if self.author_id and self.origin != Article.Origin.USER:
             self.origin = Article.Origin.USER
+
 
         # Nếu là bài người dùng đăng mà chưa có published_at -> gán now
         if self.origin == Article.Origin.USER and not self.published_at:
