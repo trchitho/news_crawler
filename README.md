@@ -22,6 +22,10 @@
 
 ![My Articles](docs/images/myArtical.png)
 
+### 6. Quản lý bài báo_admin site
+
+![All Articles_Admin](docs/images/admin.png)
+
 ## 1. Giới thiệu
 
 VN News là một dự án **thu thập và hiển thị tin tức từ nhiều nguồn báo chí Việt Nam**, phát triển bằng **Django All-in-One** (Django + Celery + Redis + PostgreSQL/SQLite).
@@ -116,8 +120,10 @@ vnnews/                       # Project config
 
 ## 5. Cài đặt & Chạy (DEV – không cần Redis/Celery)
 
-> Mục tiêu: chạy bằng **SQLite** + **crawl đồng bộ (sync)**, **không cần Redis/Celery**.
-> Làm theo thứ tự từng bước dưới đây.
+> Mục tiêu: chạy bằng **SQLite** + **crawl đồng bộ (sync)**, **không cần Redis/Celery**.  
+> Thực hiện tuần tự các bước dưới đây.
+
+---
 
 ### 5.1. Yêu cầu hệ thống
 
@@ -143,12 +149,14 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
+````
+
 > ⚠️ Nếu PowerShell chặn script: mở PowerShell **Run as Administrator** và chạy
 > `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
 ---
 
-### 5.3. Cài thư viện Python
+### 5.3. Cài dependencies Python
 
 ```bash
 # Nâng pip + công cụ build (đặc biệt trên Windows)
@@ -158,14 +166,14 @@ python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-> Nếu chạy crawl bị báo thiếu gói (ví dụ `feedparser`), cài bổ sung:
+> Nếu chạy crawl báo thiếu gói (ví dụ `feedparser`), cài bổ sung:
 > `pip install feedparser requests bleach beautifulsoup4 trafilatura readability-lxml django-taggit`
 
 ---
 
 ### 5.4. Tạo file cấu hình môi trường `.env`
 
-Tạo file `.env` ở thư mục gốc (có thể copy từ `.env.example` nếu sẵn):
+Tạo file `.env` ở thư mục gốc (copy từ `.env.example` nếu có):
 
 ```env
 # Django
@@ -179,45 +187,40 @@ DATABASE_URL=sqlite:///db.sqlite3
 
 # Redis (KHÔNG cần cho DEV sync)
 REDIS_URL=redis://localhost:6379/0
+
+# Admin mặc định (dev only)
+ADMIN_EMAIL=admin@gmail.com
+ADMIN_PASSWORD=admin
 ```
 
-> Đảm bảo `vnnews/settings.py` **có đọc `.env`** (vd: dùng `django-environ`).
-> Nếu chưa: thêm đoạn khởi tạo environ để load `.env`.
+> Đảm bảo `vnnews/settings.py` có đọc `.env` (vd: dùng `django-environ`).
 
 ---
 
-### 5.5. Khởi tạo CSDL & seed nguồn
+### 5.5. Khởi tạo CSDL & seed dữ liệu
 
 ```bash
 # Tạo schema DB
 python manage.py migrate
 
-# (Tuỳ chọn) tạo tài khoản admin để vào /admin
-python manage.py createsuperuser
-
-# Nạp danh sách nguồn RSS (idempotent)
+# Nạp danh mục & nguồn RSS mẫu (idempotent)
 python manage.py seed_sources
+
+# Tạo tài khoản admin mặc định (email: admin@gmail.com / pass: admin)
+python manage.py create_default_admin
 ```
 
-> Nếu Django báo: **models thay đổi nhưng chưa có migration**, hãy chạy:
->
-> ```bash
-> python manage.py makemigrations web
-> # nếu sửa nhiều app:
-> python manage.py makemigrations web articles sources
-> python manage.py migrate
-> ```
+> Nếu Django báo models thay đổi nhưng chưa có migration, hãy chạy:
+> `python manage.py makemigrations web articles sources` rồi `python manage.py migrate`.
 
 ---
 
 ### 5.6. Crawl dữ liệu mẫu (đồng bộ – không Celery)
 
 ```bash
-# Lấy ~30 bài mới từ các nguồn RSS (SYNC)
+# Lấy ~30 bài mới từ RSS (chạy sync, không cần worker)
 python manage.py crawl_now --limit 30
 ```
-
-> Lệnh này **KHÔNG dùng Celery**, giúp có dữ liệu ngay để test UI.
 
 ---
 
@@ -227,8 +230,34 @@ python manage.py crawl_now --limit 30
 python manage.py runserver
 ```
 
-- App: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-- Admin: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
+- Trang chính: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- Trang admin: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
+- Đăng nhập với vai trò admin:
+
+  - **Email:** `admin@gmail.com`
+  - **Mật khẩu:** `admin`
+
+- Đăng nhập với vai trò user thì vào đăng kí như bình thường
+
+---
+
+### 5.8. Lệnh hữu ích trong DEV
+
+```bash
+# Kiểm tra cấu hình Django
+python manage.py check
+
+# Rebuild search_blob (tìm kiếm bỏ dấu)
+python manage.py reindex_search
+
+# Crawl 1 URL cụ thể (debug)
+python manage.py crawl_once "https://.../bai-bao.html"
+
+# (Chỉ khi dùng Celery – không áp dụng cho DEV sync)
+python manage.py crawl_recent --hours 2
+```
+
+````
 
 ---
 
